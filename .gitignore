@@ -1,5 +1,8 @@
 prompts/
 .claude/settings.local.json
+# Scratch git worktrees; not part of the project sources and must not be
+# linted, type-checked or committed as part of it.
+.claude/worktrees/
 
 # Python
 __pycache__/
