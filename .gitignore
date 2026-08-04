@@ -9,3 +9,16 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 *.egg-info/
+build/
+dist/
+
+# Local configuration & coverage
+.env
+.coverage
+coverage.xml
+htmlcov/
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
