@@ -87,9 +87,15 @@ packages = ["urlshortener"]
 warn_unreachable = true
 no_implicit_reexport = true
 
+# Tests are type-checked, but not held to the production contract: annotating every
+# fixture and every parametrised test signature buys noise, not safety. Production code
+# under src/ stays fully strict.
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+warn_return_any = false
 
 # --------------------------------------------------------------------------
 # Tests

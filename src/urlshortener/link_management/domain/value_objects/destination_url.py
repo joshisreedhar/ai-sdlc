@@ -15,6 +15,9 @@ be safe when driven from a future non-HTTP entry point (Phase 5 bulk import, web
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlsplit
+
+from urlshortener.link_management.domain.errors import InvalidDestinationUrl
 
 ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 
@@ -25,5 +28,16 @@ class DestinationUrl:
 
     value: str
 
-    # [PHASE 1 / P1-01 - DEVELOPER] Enforce the invariants documented above in
-    # ``__post_init__`` and raise ``InvalidDestinationUrl`` on violation.
+    def __post_init__(self) -> None:
+        if not self.value or any(character.isspace() for character in self.value):
+            raise InvalidDestinationUrl(
+                "destination URL must be non-empty and contain no whitespace"
+            )
+        parts = urlsplit(self.value)
+        if parts.scheme.lower() not in ALLOWED_SCHEMES:
+            raise InvalidDestinationUrl(
+                f"destination URL scheme must be one of "
+                f"{sorted(ALLOWED_SCHEMES)}, got {parts.scheme!r}"
+            )
+        if not parts.hostname:
+            raise InvalidDestinationUrl("destination URL must have a host")
