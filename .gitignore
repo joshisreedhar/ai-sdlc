@@ -21,6 +21,9 @@ dist/
 coverage.xml
 htmlcov/
 
+# scripts/run_local.sh runtime state (pidfiles, logs)
+.run/
+
 # Editors
 .idea/
 .vscode/

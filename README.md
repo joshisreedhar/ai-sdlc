@@ -39,8 +39,9 @@ Each context is layered `api -> application -> domain`, with `infrastructure` de
 
 ## Development
 
-Local orchestration uses **Podman** (see `markdowns/developer_notes.md` section 4); the compose file
-is also compatible with Docker.
+Local orchestration uses **Podman** (see `markdowns/developer_notes.md` section 4). Story 4
+(containerization/CI) will add Dockerfiles and a `podman-compose`/Docker Compose stack; until then,
+`scripts/run_local.sh` is the manual dev path.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -51,8 +52,27 @@ cp .env.example .env
 pytest tests/architecture      # structural rules
 pytest                         # full suite
 black . && isort . && ruff check . && mypy
-
-podman-compose up -d           # local stack (postgres, redis, api, redirect, consumer)
 ```
+
+### Running the app locally
+
+```bash
+scripts/run_local.sh           # starts Postgres + Redis (Podman), runs migrations,
+                                # and starts the Management API (:8001) and
+                                # Redirection Engine (:8002)
+scripts/run_local.sh stop      # stops the app processes and the containers
+```
+
+```bash
+curl -X POST http://localhost:8001/links -H 'Content-Type: application/json' \
+  -d '{"long_url": "https://www.anthropic.com/"}'
+# => {"short_code":"...","short_url":"..."}
+
+curl -i http://localhost:8002/<short_code>
+# => 302 Found, Location: https://www.anthropic.com/
+```
+
+Safe to re-run: it skips containers/processes that are already up. The Click Consumer isn't
+started because it doesn't exist yet (`story_03_async_click_event_publish`).
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
