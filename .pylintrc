@@ -1,0 +1,45 @@
+[MASTER]
+# Ignore common generated and version control directories
+ignore=CVS,.git,__pycache__,.venv,venv,.pytest_cache
+# Use multiple processes to speed up linting (0 = auto-detect CPUs)
+jobs=0
+
+[MESSAGES CONTROL]
+# Disable noisy or overly strict rules that interfere with UI and TDD patterns
+# C0111 (missing-docstring): Noisy for small helper methods and unit tests
+# C0103 (invalid-name): Often clashes with UI framework naming conventions
+# W0621 (redefined-outer-name): Clashes with standard pytest fixture injection
+# R0902 (too-many-instance-attributes): UI classes naturally have many attributes (widgets)
+# R0903 (too-few-public-methods): Common for simple data models or specific UI components
+disable=
+    missing-docstring,
+    invalid-name,
+    redefined-outer-name,
+    too-many-instance-attributes,
+    too-many-arguments,
+    too-few-public-methods,
+    too-many-locals
+
+[FORMAT]
+# Standard modern line length (PEP 8 recommends 79, but 100 is the modern standard)
+max-line-length=100
+max-module-lines=1000
+
+# String formatting
+expected-line-ending-format=LF
+
+[DESIGN]
+# Allow deeper inheritance trees, which is sometimes necessary for UI frameworks
+max-parents=10
+max-branches=15
+max-returns=6
+
+[REPORTS]
+# Makes terminal output easier to read
+output-format=colorized
+reports=no
+score=yes
+
+[BASIC]
+# Allow short variables like 'x', 'y', 'i' often used in math/grid coordinates
+good-names=i,j,k,ex,Run,_,x,y,w,h,ui
