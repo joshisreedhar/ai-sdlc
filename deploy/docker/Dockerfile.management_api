@@ -1,0 +1,37 @@
+# Management API image (P1-04).
+#
+# Shares this build context and package with Dockerfile.redirection_engine and
+# Dockerfile.click_consumer - only the final CMD (and the healthcheck, for the HTTP
+# services) differs, so Phase 2's Helm chart can treat all three uniformly.
+#
+# This is also the image the compose stack's one-shot "migrate" service runs
+# (overriding CMD with `alembic upgrade head`), which is why alembic.ini and
+# migrations/ are copied in here.
+
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install --no-cache-dir --prefix=/install .
+
+FROM python:3.12-slim AS runtime
+
+RUN groupadd --gid 10001 appuser \
+    && useradd --uid 10001 --gid appuser --create-home --shell /usr/sbin/nologin appuser
+
+WORKDIR /app
+COPY --from=builder /install /usr/local
+COPY alembic.ini ./alembic.ini
+COPY migrations ./migrations
+
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=2)" || exit 1
+
+CMD ["uvicorn", "urlshortener.apps.management_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

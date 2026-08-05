@@ -1,0 +1,27 @@
+# Click Consumer image (P1-04) - the P1-03 stub consumer.
+#
+# Shares this build context and package with Dockerfile.management_api and
+# Dockerfile.redirection_engine - only the final CMD differs, so Phase 2's Helm chart can
+# treat all three uniformly. No HTTP port: this process only reads the click-event
+# stream and logs what it finds.
+
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+COPY pyproject.toml README.md ./
+COPY src ./src
+RUN pip install --no-cache-dir --prefix=/install .
+
+FROM python:3.12-slim AS runtime
+
+RUN groupadd --gid 10001 appuser \
+    && useradd --uid 10001 --gid appuser --create-home --shell /usr/sbin/nologin appuser
+
+WORKDIR /app
+COPY --from=builder /install /usr/local
+
+USER appuser
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "urlshortener.apps.click_consumer.main"]

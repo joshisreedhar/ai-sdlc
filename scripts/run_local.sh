@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Run the URL Shortener platform locally with Podman.
+# Run the URL Shortener platform locally with Podman, without building containers.
 #
-# Starts Postgres + Redis containers, applies the Alembic migration, and runs
-# the Management API (:8001) and Redirection Engine (:8002). The Click
-# Consumer isn't included: it doesn't exist yet (story_03_async_click_event_publish).
-# Story 4 (containerization/CI) will replace this script with `podman-compose up`;
-# until then this is the manual dev path.
+# Starts Postgres + Redis containers, applies the Alembic migration, and runs the
+# Management API (:8001) and Redirection Engine (:8002) directly with uvicorn - useful
+# for fast local iteration without a container rebuild each time. The Click Consumer
+# isn't started by this script; run it separately with
+# `python -m urlshortener.apps.click_consumer.main`, or use the full containerized
+# stack instead: `podman compose up -d --build` (see docker-compose.yml).
 #
 # Usage:
 #   scripts/run_local.sh          # start everything (safe to re-run)

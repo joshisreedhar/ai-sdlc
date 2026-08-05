@@ -107,7 +107,9 @@ testpaths = ["tests"]
 # as tests.architecture._arch; "src" makes the package importable without install.
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
-addopts = "--strict-markers --strict-config"
+# e2e tests need a container runtime, build three images and bind the same host ports
+# scripts/run_local.sh uses, so they are opt-in: `pytest -m e2e tests/e2e`.
+addopts = "--strict-markers --strict-config -m \"not e2e\""
 markers = [
     "architecture: structural/ArchUnit-equivalent rules (no application imports, no I/O)",
     "unit: fast isolated tests with no external dependencies",

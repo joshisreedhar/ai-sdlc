@@ -1,0 +1,121 @@
+# Local multi-service stack (P1-04): PostgreSQL, Redis, the Management API, the
+# Redirection Engine and the Click Consumer stub, wired together the same way CI does.
+#
+# Works with either `docker compose up` or `podman-compose up` / `podman compose up`
+# (markdowns/developer_notes.md section 4).
+#
+#   podman compose up -d --build
+#   curl -X POST http://localhost:8001/links -H 'Content-Type: application/json' \
+#     -d '{"long_url": "https://www.anthropic.com/"}'
+#   curl -i http://localhost:8002/<short_code>
+#   podman compose down -v
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_USER: urlshortener
+      POSTGRES_PASSWORD: urlshortener
+      POSTGRES_DB: urlshortener
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U urlshortener"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - urlshortener_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.management_api
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      URLSHORTENER_DATABASE_URL: postgresql+asyncpg://urlshortener:urlshortener@postgres:5432/urlshortener
+      URLSHORTENER_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  management_api:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.management_api
+    ports:
+      - "8001:8000"
+    environment:
+      URLSHORTENER_DATABASE_URL: postgresql+asyncpg://urlshortener:urlshortener@postgres:5432/urlshortener
+      URLSHORTENER_REDIS_URL: redis://redis:6379/0
+      URLSHORTENER_SHORT_URL_BASE: http://localhost:8001
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  redirection_engine:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.redirection_engine
+    ports:
+      - "8002:8000"
+    environment:
+      URLSHORTENER_DATABASE_URL: postgresql+asyncpg://urlshortener:urlshortener@postgres:5432/urlshortener
+      URLSHORTENER_REDIS_URL: redis://redis:6379/0
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  click_consumer:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.click_consumer
+    environment:
+      URLSHORTENER_DATABASE_URL: postgresql+asyncpg://urlshortener:urlshortener@postgres:5432/urlshortener
+      URLSHORTENER_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  urlshortener_postgres_data:
