@@ -21,11 +21,17 @@ from urlshortener.redirection.application.pipeline.redirect_interceptor import (
 from urlshortener.redirection.application.pipeline.redirect_pipeline import (
     RedirectPipeline,
 )
+from urlshortener.redirection.application.services.click_event_dispatcher import (
+    ClickEventDispatcher,
+)
 from urlshortener.redirection.application.services.link_resolution_service import (
     LinkResolutionService,
 )
 from urlshortener.redirection.infrastructure.cache.redis_link_cache import (
     RedisLinkCache,
+)
+from urlshortener.redirection.infrastructure.messaging.redis_stream_click_event_publisher import (  # noqa: E501
+    RedisStreamClickEventPublisher,
 )
 from urlshortener.redirection.infrastructure.persistence.engine import (
     create_read_engine,
@@ -62,6 +68,13 @@ def create_app(settings: Settings) -> FastAPI:
         terminal_handler=resolution_service.resolve,
         interceptors=REDIRECT_INTERCEPTORS,
     )
+    click_event_dispatcher = ClickEventDispatcher(
+        publisher=RedisStreamClickEventPublisher(
+            redis_client,
+            stream=settings.click_event_stream,
+            max_len=settings.click_stream_max_len,
+        )
+    )
 
     async def readiness_probe() -> bool:
         ready = True
@@ -93,6 +106,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.state.settings = settings
     app.state.clock = SystemClock()
     app.state.redirect_pipeline = pipeline
+    app.state.click_event_dispatcher = click_event_dispatcher
     app.state.readiness_probe = readiness_probe
     # Health first: GET /{short_code} matches any single segment and would otherwise
     # turn /healthz into a short-code lookup.

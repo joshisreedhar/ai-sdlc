@@ -15,6 +15,9 @@ from fastapi import Request
 from urlshortener.redirection.application.pipeline.redirect_pipeline import (
     RedirectPipeline,
 )
+from urlshortener.redirection.application.services.click_event_dispatcher import (
+    ClickEventDispatcher,
+)
 from urlshortener.shared_kernel.time.clock import Clock
 
 ReadinessProbe = Callable[[], Awaitable[bool]]
@@ -25,6 +28,12 @@ def get_redirect_pipeline(request: Request) -> RedirectPipeline:
     """Return the redirect pipeline published by the composition root."""
     pipeline: RedirectPipeline = request.app.state.redirect_pipeline
     return pipeline
+
+
+def get_click_event_dispatcher(request: Request) -> ClickEventDispatcher:
+    """Return the click event dispatcher published by the composition root."""
+    dispatcher: ClickEventDispatcher = request.app.state.click_event_dispatcher
+    return dispatcher
 
 
 def get_clock(request: Request) -> Clock:

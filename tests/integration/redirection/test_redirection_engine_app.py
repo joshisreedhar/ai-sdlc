@@ -7,6 +7,8 @@ interceptor list.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import redis.asyncio as redis_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -114,3 +116,69 @@ async def test_the_pipeline_is_wired_with_an_explicitly_empty_interceptor_list(
     app = create_app(Settings(database_url=empty_links_table, redis_url=redis_url))
 
     assert app.state.redirect_pipeline.interceptors == ()
+
+
+@pytest.fixture()
+async def clean_click_stream(redis_url):
+    stream = "test.clicks.redirection_engine_app.v1"
+    connection = redis_asyncio.from_url(redis_url, decode_responses=True)
+    try:
+        await connection.delete(stream)
+        yield stream, connection
+        await connection.delete(stream)
+    finally:
+        await connection.aclose()
+
+
+async def test_a_successful_redirect_publishes_a_click_event(
+    empty_links_table, redis_url, cold_cache, seeded_link, clean_click_stream
+):
+    """P1-03 Scenario 1: every redirect emits a click event to the broker."""
+    stream, stream_connection = clean_click_stream
+    settings = Settings(
+        database_url=empty_links_table,
+        redis_url=redis_url,
+        link_cache_ttl_seconds=60,
+        click_event_stream=stream,
+    )
+    app = create_app(settings)
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            follow_redirects=False,
+        ) as async_client,
+    ):
+        response = await async_client.get(f"/{seeded_link}")
+
+    assert response.status_code == 302
+
+    entries = await stream_connection.xrange(stream)
+    assert len(entries) == 1
+    _, fields = entries[0]
+    assert json.loads(fields["payload"])["short_code"] == seeded_link
+
+
+async def test_a_link_not_found_does_not_publish_a_click_event(
+    empty_links_table, redis_url, cold_cache, clean_click_stream
+):
+    stream, stream_connection = clean_click_stream
+    settings = Settings(
+        database_url=empty_links_table,
+        redis_url=redis_url,
+        click_event_stream=stream,
+    )
+    app = create_app(settings)
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+            follow_redirects=False,
+        ) as async_client,
+    ):
+        response = await async_client.get("/missing")
+
+    assert response.status_code == 404
+    assert await stream_connection.xrange(stream) == []

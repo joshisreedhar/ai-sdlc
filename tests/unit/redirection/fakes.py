@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from urlshortener.redirection.domain.model.cached_link import CachedLink
+from urlshortener.redirection.domain.model.redirect_context import RedirectContext
 from urlshortener.redirection.domain.model.resolved_link import ResolvedLink
 
 
@@ -71,3 +72,13 @@ class FrozenClock:
 
     def now(self) -> datetime:
         return self.instant
+
+
+class RecordingClickEventDispatcher:
+    """Stands in for ``ClickEventDispatcher``, recording every context it is given."""
+
+    def __init__(self) -> None:
+        self.dispatched: list[RedirectContext] = []
+
+    async def dispatch(self, context: RedirectContext) -> None:
+        self.dispatched.append(context)

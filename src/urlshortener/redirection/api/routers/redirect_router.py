@@ -15,10 +15,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
+from starlette.background import BackgroundTask
 
-from urlshortener.redirection.api.dependencies import get_clock, get_redirect_pipeline
+from urlshortener.redirection.api.dependencies import (
+    get_click_event_dispatcher,
+    get_clock,
+    get_redirect_pipeline,
+)
 from urlshortener.redirection.application.pipeline.redirect_pipeline import (
     RedirectPipeline,
+)
+from urlshortener.redirection.application.services.click_event_dispatcher import (
+    ClickEventDispatcher,
 )
 from urlshortener.redirection.domain.model.redirect_context import RedirectContext
 from urlshortener.redirection.domain.model.redirect_decision import (
@@ -53,11 +61,14 @@ async def redirect(
     request: Request,
     pipeline: Annotated[RedirectPipeline, Depends(get_redirect_pipeline)],
     clock: Annotated[Clock, Depends(get_clock)],
+    click_event_dispatcher: Annotated[
+        ClickEventDispatcher, Depends(get_click_event_dispatcher)
+    ],
 ) -> Response:
     """Resolve ``short_code`` through the pipeline and map the decision to a response."""
     context = build_redirect_context(short_code, request, clock)
     decision = await pipeline.execute(context)
-    return to_response(decision)
+    return to_response(decision, context, click_event_dispatcher)
 
 
 def build_redirect_context(
@@ -88,14 +99,24 @@ def client_ip_of(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-def to_response(decision: RedirectDecision) -> Response:
-    """Map a decision type to its HTTP response."""
+def to_response(
+    decision: RedirectDecision,
+    context: RedirectContext,
+    click_event_dispatcher: ClickEventDispatcher,
+) -> Response:
+    """Map a decision type to its HTTP response.
+
+    On a successful redirect, the click event is scheduled as a ``BackgroundTask`` -
+    Starlette runs it only *after* the response has been sent, so publishing to the
+    broker never delays the redirect (P1-03 Scenario 3).
+    """
     match decision:
         case RedirectToDestination():
             return RedirectResponse(
                 url=decision.destination_url,
                 status_code=decision.status_code,
                 headers=NO_STORE_HEADERS,
+                background=BackgroundTask(click_event_dispatcher.dispatch, context),
             )
         case LinkNotFound():
             raise HTTPException(

@@ -7,14 +7,19 @@ bypassed.
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from tests.unit.redirection.fakes import FrozenClock
+from tests.unit.redirection.fakes import FrozenClock, RecordingClickEventDispatcher
 from urlshortener.redirection.api.routers import redirect_router
 from urlshortener.redirection.application.pipeline.redirect_pipeline import (
     RedirectPipeline,
+)
+from urlshortener.redirection.application.services.click_event_dispatcher import (
+    ClickEventDispatcher,
 )
 from urlshortener.redirection.domain.model.redirect_context import RedirectContext
 from urlshortener.redirection.domain.model.redirect_decision import (
@@ -46,12 +51,13 @@ class UnhandledDecision(RedirectDecision):
     __slots__ = ()
 
 
-def _client(handler, clock=None, raise_app_exceptions=True):
+def _client(handler, clock=None, raise_app_exceptions=True, dispatcher=None):
     app = FastAPI()
     app.state.redirect_pipeline = RedirectPipeline(
         terminal_handler=handler, interceptors=()
     )
     app.state.clock = clock or FrozenClock()
+    app.state.click_event_dispatcher = dispatcher or RecordingClickEventDispatcher()
     app.include_router(redirect_router.router)
     return AsyncClient(
         transport=ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions),
@@ -166,3 +172,45 @@ async def test_the_client_ip_falls_back_to_the_peer_address():
         await client.get("/abcd123")
 
     assert handler.contexts[0].client_ip == "127.0.0.1"
+
+
+async def test_a_successful_redirect_dispatches_a_click_event():
+    """P1-03 Scenario 1: a redirect always emits a click event."""
+    handler = RecordingTerminalHandler(
+        RedirectToDestination(destination_url=DESTINATION)
+    )
+    dispatcher = RecordingClickEventDispatcher()
+
+    async with _client(handler, dispatcher=dispatcher) as client:
+        await client.get("/abcd123")
+
+    assert [context.short_code for context in dispatcher.dispatched] == ["abcd123"]
+
+
+async def test_an_unknown_short_code_does_not_dispatch_a_click_event():
+    handler = RecordingTerminalHandler(LinkNotFound(short_code="missing"))
+    dispatcher = RecordingClickEventDispatcher()
+
+    async with _client(handler, dispatcher=dispatcher) as client:
+        await client.get("/missing")
+
+    assert dispatcher.dispatched == []
+
+
+async def test_the_response_is_built_before_the_click_event_is_dispatched():
+    """P1-03 Scenario 3: dispatch is deferred to a background task, never awaited
+    inline while the response is being constructed."""
+    decision = RedirectToDestination(destination_url=DESTINATION)
+    dispatcher = RecordingClickEventDispatcher()
+    context = RedirectContext(short_code="abcd123", requested_at=FrozenClock().now())
+
+    response = redirect_router.to_response(
+        decision, context, cast(ClickEventDispatcher, dispatcher)
+    )
+
+    assert dispatcher.dispatched == []
+    assert response.background is not None
+
+    await response.background()
+
+    assert dispatcher.dispatched == [context]
