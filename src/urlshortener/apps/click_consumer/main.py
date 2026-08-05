@@ -22,6 +22,7 @@ from urlshortener.analytics.application.services.logging_click_event_handler imp
     LoggingClickEventHandler,
 )
 from urlshortener.analytics.infrastructure.messaging.redis_stream_click_event_subscriber import (  # noqa: E501
+    DEFAULT_BLOCK_MILLISECONDS,
     RedisStreamClickEventSubscriber,
 )
 from urlshortener.shared_kernel.config.settings import Settings
@@ -32,6 +33,10 @@ from urlshortener.shared_kernel.logging.structured_logging import (
 
 logger = get_logger(__name__)
 
+REDIS_SOCKET_TIMEOUT_SECONDS: float = (DEFAULT_BLOCK_MILLISECONDS / 1000) + 5
+"""Comfortably above the subscriber's ``BLOCK`` duration, so the client's own socket read
+timeout never races the server-side block and raises a spurious ``TimeoutError``."""
+
 
 def consumer_name() -> str:
     """A reasonably unique identity for this process within the consumer group."""
@@ -40,7 +45,11 @@ def consumer_name() -> str:
 
 async def run(settings: Settings) -> None:
     """Build the adapters and consume ``settings.click_event_stream`` until cancelled."""
-    client = redis_asyncio.from_url(settings.redis_url, decode_responses=True)
+    client = redis_asyncio.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+    )
     subscriber = RedisStreamClickEventSubscriber(
         client=client,
         stream=settings.click_event_stream,

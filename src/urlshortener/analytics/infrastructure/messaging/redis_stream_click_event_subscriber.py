@@ -23,7 +23,12 @@ from urlshortener.shared_kernel.logging.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_BLOCK_MILLISECONDS: int = 5_000
+DEFAULT_BLOCK_MILLISECONDS: int = 2_000
+"""Kept comfortably under redis-py's default client ``socket_timeout`` (5s): a ``BLOCK``
+duration close to or above the client's own read timeout makes ``XREADGROUP`` race its
+own socket, raising a spurious ``redis.exceptions.TimeoutError`` instead of returning an
+empty result. Composition roots building a client for this subscriber should also give
+it a ``socket_timeout`` comfortably larger than this value."""
 DEFAULT_BATCH_SIZE: int = 10
 PAYLOAD_FIELD: str = "payload"
 
